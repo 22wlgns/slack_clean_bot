@@ -1,8 +1,8 @@
 import os
+
 import pg8000
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
-import datetime
 
 # 환경 변수에서 Slack API 토큰 및 기타 설정 불러오기
 slack_token = os.getenv('SLACK_BOT_TOKEN')
@@ -65,12 +65,6 @@ def send_message(user_id, channel_id):
 
 def lambda_handler(event, context):
     current_index = get_current_index_from_db()
-
-    # 현재 요일 확인 (월: 0, 수: 2, 금: 4)
-    today = datetime.datetime.now().weekday()
-    if today not in [0, 2, 4]:
-        print("오늘은 월, 수, 금이 아닙니다.")
-        return
 
     user_id = get_user_for_today(user_list, current_index)
     send_message(user_id, channel_id)
