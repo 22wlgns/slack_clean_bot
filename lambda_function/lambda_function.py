@@ -15,11 +15,7 @@ db_password = os.getenv('DB_PASSWORD')
 
 client = WebClient(token=slack_token)
 
-teams = {
-    'monday': [('U05E56X53L2', 'U05H9QD4HCK'), ('U06BL1SGGRW', 'U056ER31738')],
-    'wednesday': [('U044AFP0J2Y', 'U06P18S3MU2', 'U05HA0ERSP5'), ('U040LULRKL2', 'U07FDHR6RPH')],
-    'friday': [('U04SG0Y3FQS', 'U04SG0Y3FQS'), ('U040U8Y1E5U', 'U040YFZ6QBX')]
-}
+all_users = ['U040LULRKL2', 'U040U8Y1E5U', 'U040YFZ6QBX', 'U05E56X53L2', 'U044AFP0J2Y', 'U06BL1SGGRW', 'U056ER31738', 'U07FDHR6RPH']
 
 def get_db_connection():
     return pg8000.connect(
@@ -53,23 +49,33 @@ def update_current_index_in_db(new_index):
     finally:
         conn.close()
 
-def get_today_teams(day_of_week, current_index):
-    # 요일에 따라 맞는 팀 리스트 가져오기
-    day_teams = teams[day_of_week]
-    return day_teams[current_index % len(day_teams)]
+def get_next_user(current_index):
+    # 모든 유저 리스트에서 다음 유저 가져오기
+    return all_users[current_index % len(all_users)]
 
-def send_message(user_ids, channel_id):
+def send_message(current_user_id, channel_id):
     try:
-        user_mentions = " ".join([f"<@{user_id}>" for user_id in user_ids])
-        message = f"""오늘의 청소당번은 {user_mentions}님들 입니다!
-> 1. 커피머신, 제빙기, 정수기 닦기
-> 2. 커피머신, 정수기 물받이에 고인물 비우기
-> 3. 커피머신, 제빙기에 오래된 물 갈아주기
-> 4. 커피머신 원두 채우기
-> 5. 전자레인지 내부 물티슈로 닦기
-> 6. 쓰레기통 더러우면 비닐봉투 교체 및 쓰레기통 세척하기"""
+        remaining_users = [user_id for user_id in all_users if user_id != current_user_id]
+        current_index = all_users.index(current_user_id)
+        ordered_users = remaining_users[current_index % len(remaining_users):] + remaining_users[:current_index % len(remaining_users)]
+
+        ordered_users.append(current_user_id)
+
+        # 유저 멘션으로 변환
+        ordered_user_mentions = " > ".join([f"<@{user_id}>" for user_id in ordered_users])
+
+        message = f"""*오늘의 청소당번은 <@{current_user_id}>님 입니다🎉*
+다음 당번 {ordered_user_mentions}
+
+> 🫧 커피머신, 제빙기, 정수기 닦기
+> 🫧 커피머신, 제빙기, 정수기 물받이에 고인물 비우기
+> 🫧 커피머신, 제빙기에 오래된 물 갈아주기
+> 🫧 커피머신 원두 채우기
+> 🫧 전자레인지 내부 물티슈로 닦기
+> 🫧 쓰레기통 더러우면 비닐봉투 교체 및 쓰레기통 세척하기
+"""
         response = client.chat_postMessage(channel=channel_id, text=message)
-        print(f"Message sent to {user_mentions} in {channel_id}: {response['ts']}")
+        print(f"Message sent to {current_user_id} in {channel_id}: {response['ts']}")
     except SlackApiError as e:
         print(f"Error sending message: {e.response['error']}")
 
@@ -80,16 +86,15 @@ def lambda_handler(event, context):
     seoul_tz = pytz.timezone('Asia/Seoul')
     today = datetime.datetime.now(seoul_tz).strftime('%A').lower()
 
-    team_for_today = get_today_teams(today, current_index)
-    if team_for_today:
-        send_message(team_for_today, channel_id)
+    # 다음 청소 당번 가져오기
+    user_for_today = get_next_user(current_index)
 
-        # 금요일에만 인덱스를 업데이트
-        if today == 'friday':
-            new_index = (current_index + 1) % len(teams['monday'])
-            update_current_index_in_db(new_index)
-            print(f"Current index after update: {new_index}")
-        else:
-            print(f"Index remains the same: {current_index}")
+    if user_for_today:
+        send_message(user_for_today, channel_id)
+
+        # 청소 당번이 돌았으니 다음 인덱스로 업데이트
+        new_index = (current_index + 1) % len(all_users)
+        update_current_index_in_db(new_index)
+        print(f"Current index after update: {new_index}")
     else:
-        print(f"No teams assigned for today: {today}")
+        print(f"No user assigned for today: {today}")
